@@ -10,7 +10,7 @@
     <main class="shell">
       <section class="hero">
         <h1>球员分析页</h1>
-        <p>先输入 ESPN 球员 id。玩具版先不做复杂搜索，这样更省 token、也更容易部署。</p>
+        <p>先输入 ESPN 球员 id。轻量版先不做复杂搜索，这样更省资源，也更容易部署。</p>
       </section>
 
       <nav class="nav">
@@ -86,9 +86,21 @@
           statRow("场均助攻", season.avgAssists),
           statRow("场均上场时间", season.avgMinutes),
           statRow("出场数", season.gamesPlayed),
-          statRow("近期得分波动", recentAvgPoints > season.avgPoints + 3 ? "是" : "否", recentAvgPoints > season.avgPoints + 3),
-          statRow("近期篮板波动", recentAvgRebounds > season.avgRebounds + 3 ? "是" : "否", recentAvgRebounds > season.avgRebounds + 3),
-          statRow("近期助攻波动", recentAvgAssists > season.avgAssists + 3 ? "是" : "否", recentAvgAssists > season.avgAssists + 3)
+          statRow(
+            "近期得分波动",
+            recentAvgPoints > season.avgPoints + 3 ? "是" : "否",
+            recentAvgPoints > season.avgPoints + 3
+          ),
+          statRow(
+            "近期篮板波动",
+            recentAvgRebounds > season.avgRebounds + 3 ? "是" : "否",
+            recentAvgRebounds > season.avgRebounds + 3
+          ),
+          statRow(
+            "近期助攻波动",
+            recentAvgAssists > season.avgAssists + 3 ? "是" : "否",
+            recentAvgAssists > season.avgAssists + 3
+          )
         ].join("");
 
         const biasSwitch = document.getElementById("biasSwitch").value;
