@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>预测验证 | NBA洞察者</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <h1>预测验证页</h1>
+        <p>输入比赛 id、球员 id 和你的预测值。保存到 Supabase 后，就能点按钮做“预测 vs 实际”的验证。</p>
+      </section>
+
+      <nav class="nav">
+        <a href="/">今日赛程</a>
+        <a href="/player">球员分析</a>
+        <a href="/predictions">预测验证</a>
+      </nav>
+
+      <section class="card">
+        <div class="form-grid">
+          <div>
+            <label for="eventId">比赛 id</label>
+            <input id="eventId" placeholder="例如 401869191" />
+          </div>
+          <div>
+            <label for="playerId">球员 id</label>
+            <input id="playerId" placeholder="例如 4251" />
+          </div>
+          <div>
+            <label for="playerName">球员名字</label>
+            <input id="playerName" placeholder="例如 Paul George" />
+          </div>
+          <div>
+            <label for="statType">预测项目</label>
+            <select id="statType">
+              <option value="points">得分</option>
+              <option value="rebounds">篮板</option>
+              <option value="assists">助攻</option>
+            </select>
+          </div>
+          <div>
+            <label for="predictedValue">预测值</label>
+            <input id="predictedValue" type="number" placeholder="例如 24" />
+          </div>
+        </div>
+        <div style="margin-top: 14px">
+          <label for="note">备注</label>
+          <textarea id="note" placeholder="可选，例如：我觉得他最近手感很好"></textarea>
+        </div>
+        <div class="form-grid" style="margin-top: 14px">
+          <button id="savePrediction">保存预测</button>
+          <button id="refreshList" class="secondary">刷新预测列表</button>
+        </div>
+      </section>
+
+      <section class="grid two" style="margin-top: 18px">
+        <article class="card">
+          <h2>准确率趋势图</h2>
+          <div id="chart" class="chart"></div>
+        </article>
+        <article class="card">
+          <h2>预测记录</h2>
+          <div id="predictionList" class="prediction-list"></div>
+        </article>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+    <script>
+      const listEl = document.getElementById("predictionList");
+      const chartEl = document.getElementById("chart");
+
+      function fillFormFromItem(item) {
+        document.getElementById("eventId").value = item.event_id;
+        document.getElementById("playerId").value = item.player_id;
+        document.getElementById("playerName").value = item.player_name;
+        document.getElementById("statType").value = item.stat_type;
+        document.getElementById("predictedValue").value = item.predicted_value;
+        document.getElementById("note").value = item.note || "";
+      }
+
+      function renderChart(rows) {
+        const verified = rows.filter((item) => item.accuracy_score !== null && item.accuracy_score !== undefined);
+        if (!verified.length) {
+          chartEl.innerHTML = "<div>还没有已验证的数据。</div>";
+          return;
+        }
+
+        chartEl.innerHTML = verified
+          .slice(0, 8)
+          .reverse()
+          .map((item) => {
+            const height = Math.max(20, Number(item.accuracy_score));
+            return `<div class="bar" style="height:${height * 1.6}px"><span>${item.accuracy_score}</span></div>`;
+          })
+          .join("");
+      }
+
+      let currentRows = [];
+
+      function renderList(rows) {
+        currentRows = rows;
+        if (!rows.length) {
+          listEl.innerHTML = "<div class='prediction-item'>还没有预测记录。先保存一条吧。</div>";
+          chartEl.innerHTML = "<div>还没有图表数据。</div>";
+          return;
+        }
+
+        listEl.innerHTML = rows
+          .map(
+            (item) => `
+              <div class="prediction-item">
+                <div class="pill">${item.player_name}</div>
+                <p>比赛 id：${item.event_id}</p>
+                <p>项目：${item.stat_type}</p>
+                <p>预测值：${item.predicted_value}</p>
+                <p>实际值：${item.actual_value ?? "待验证"}</p>
+                <p>准确率：${item.accuracy_score ?? "待验证"}</p>
+                <p class="muted">${item.note || "无备注"}</p>
+                <div class="form-grid">
+                  <button data-action="verify" data-id="${item.id}">验证这条预测</button>
+                  <button class="secondary" data-action="edit" data-id="${item.id}">把它填回表单</button>
+                </div>
+              </div>
+            `
+          )
+          .join("");
+
+        listEl.querySelectorAll("button[data-action]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const item = currentRows.find((row) => row.id === button.dataset.id);
+            if (!item) return;
+
+            if (button.dataset.action === "verify") {
+              window.verifyPrediction(item);
+              return;
+            }
+
+            window.editPrediction(item);
+          });
+        });
+
+        renderChart(rows);
+      }
+
+      async function loadPredictions() {
+        listEl.innerHTML = "<div class='prediction-item'>正在加载预测记录...</div>";
+        try {
+          const data = await nbaInsight.apiGet("/api/predictions");
+          if (data.offline) {
+            listEl.innerHTML = `<div class='prediction-item'>${data.message}</div>`;
+            chartEl.innerHTML = "<div>请先配置 Supabase。</div>";
+            return;
+          }
+          renderList(data.rows || []);
+        } catch (error) {
+          listEl.innerHTML = `<div class='prediction-item'>加载失败：${error.message}</div>`;
+        }
+      }
+
+      async function savePrediction() {
+        try {
+          await nbaInsight.apiSend("/api/predictions", "POST", {
+            eventId: document.getElementById("eventId").value.trim(),
+            playerId: document.getElementById("playerId").value.trim(),
+            playerName: document.getElementById("playerName").value.trim(),
+            statType: document.getElementById("statType").value,
+            predictedValue: document.getElementById("predictedValue").value,
+            note: document.getElementById("note").value.trim()
+          });
+          alert("保存成功。");
+          loadPredictions();
+        } catch (error) {
+          alert(`保存失败：${error.message}`);
+        }
+      }
+
+      window.verifyPrediction = async function verifyPrediction(item) {
+        try {
+          const result = await nbaInsight.apiSend("/api/predictions", "PATCH", {
+            id: item.id,
+            eventId: item.event_id,
+            playerId: item.player_id,
+            playerName: item.player_name,
+            statType: item.stat_type,
+            predictedValue: item.predicted_value,
+            note: item.note
+          });
+          alert(`验证完成。实际值：${result.actual.stats[item.stat_type]}，准确率：${result.accuracyScore}`);
+          loadPredictions();
+        } catch (error) {
+          alert(`验证失败：${error.message}`);
+        }
+      };
+
+      window.editPrediction = function editPrediction(item) {
+        fillFormFromItem(item);
+      };
+
+      document.getElementById("savePrediction").addEventListener("click", savePrediction);
+      document.getElementById("refreshList").addEventListener("click", loadPredictions);
+      loadPredictions();
+    </script>
+  </body>
+</html>

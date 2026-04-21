@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>球员分析 | NBA洞察者</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <h1>球员分析页</h1>
+        <p>先输入 ESPN 球员 id。玩具版先不做复杂搜索，这样更省 token、也更容易部署。</p>
+      </section>
+
+      <nav class="nav">
+        <a href="/">今日赛程</a>
+        <a href="/player">球员分析</a>
+        <a href="/predictions">预测验证</a>
+      </nav>
+
+      <section class="card">
+        <div class="form-grid">
+          <div>
+            <label for="playerId">球员 ESPN id</label>
+            <input id="playerId" placeholder="例如 4251（Paul George）" />
+          </div>
+          <div>
+            <label for="biasSwitch">偏见提醒开关</label>
+            <select id="biasSwitch">
+              <option value="on">打开</option>
+              <option value="off">关闭</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-top: 14px">
+          <button id="loadPlayer">加载球员数据</button>
+        </div>
+      </section>
+
+      <section class="grid two" style="margin-top: 18px">
+        <article class="card">
+          <h2>赛季均值</h2>
+          <div id="seasonStats" class="recent-list"></div>
+        </article>
+        <article class="card">
+          <h2>偏见提醒</h2>
+          <div id="biasWarning" class="muted">加载后显示。</div>
+        </article>
+      </section>
+
+      <section class="card" style="margin-top: 18px">
+        <h2>最近 5 场</h2>
+        <div id="recentGames" class="recent-list"></div>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+    <script>
+      const seasonStatsEl = document.getElementById("seasonStats");
+      const biasWarningEl = document.getElementById("biasWarning");
+      const recentGamesEl = document.getElementById("recentGames");
+
+      function statRow(title, value, isAlert) {
+        return `
+          <div class="recent-item">
+            <div class="${isAlert ? "highlight-red" : ""}">${title}</div>
+            <div>${value}</div>
+          </div>
+        `;
+      }
+
+      function renderPlayer(data) {
+        const season = data.seasonStats;
+        const recent = data.recentGames || [];
+        const recentAvgPoints =
+          recent.reduce((sum, item) => sum + item.points, 0) / (recent.length || 1);
+        const recentAvgRebounds =
+          recent.reduce((sum, item) => sum + item.rebounds, 0) / (recent.length || 1);
+        const recentAvgAssists =
+          recent.reduce((sum, item) => sum + item.assists, 0) / (recent.length || 1);
+
+        seasonStatsEl.innerHTML = [
+          statRow("场均得分", season.avgPoints),
+          statRow("场均篮板", season.avgRebounds),
+          statRow("场均助攻", season.avgAssists),
+          statRow("场均上场时间", season.avgMinutes),
+          statRow("出场数", season.gamesPlayed),
+          statRow("近期得分波动", recentAvgPoints > season.avgPoints + 3 ? "是" : "否", recentAvgPoints > season.avgPoints + 3),
+          statRow("近期篮板波动", recentAvgRebounds > season.avgRebounds + 3 ? "是" : "否", recentAvgRebounds > season.avgRebounds + 3),
+          statRow("近期助攻波动", recentAvgAssists > season.avgAssists + 3 ? "是" : "否", recentAvgAssists > season.avgAssists + 3)
+        ].join("");
+
+        const biasSwitch = document.getElementById("biasSwitch").value;
+        if (biasSwitch === "on") {
+          biasWarningEl.className = data.biasWarning.isWarning ? "warning" : "ok";
+          biasWarningEl.textContent = data.biasWarning.message;
+        } else {
+          biasWarningEl.className = "muted";
+          biasWarningEl.textContent = "你已关闭偏见提醒。";
+        }
+
+        recentGamesEl.innerHTML = recent
+          .map(
+            (item) => `
+              <div class="recent-item">
+                <div class="pill">${nbaInsight.formatLocalTime(item.gameDate)}</div>
+                <h3>${item.opponent}</h3>
+                <p>结果：${item.result} | 比分：${item.score}</p>
+                <p>得分：<span class="${item.points >= season.avgPoints + 3 ? "highlight-red" : ""}">${item.points}</span></p>
+                <p>篮板：<span class="${item.rebounds >= season.avgRebounds + 3 ? "highlight-red" : ""}">${item.rebounds}</span></p>
+                <p>助攻：<span class="${item.assists >= season.avgAssists + 3 ? "highlight-red" : ""}">${item.assists}</span></p>
+              </div>
+            `
+          )
+          .join("");
+      }
+
+      async function loadPlayer() {
+        const playerId = document.getElementById("playerId").value.trim();
+        if (!playerId) {
+          alert("先输入球员 id。");
+          return;
+        }
+
+        seasonStatsEl.innerHTML = '<div class="recent-item">正在加载...</div>';
+        recentGamesEl.innerHTML = "";
+        biasWarningEl.className = "muted";
+        biasWarningEl.textContent = "正在分析...";
+
+        try {
+          const data = await nbaInsight.apiGet(`/api/player?id=${encodeURIComponent(playerId)}`);
+          renderPlayer(data);
+        } catch (error) {
+          seasonStatsEl.innerHTML = `<div class="recent-item">加载失败：${error.message}</div>`;
+          biasWarningEl.textContent = "加载失败。";
+        }
+      }
+
+      document.getElementById("loadPlayer").addEventListener("click", loadPlayer);
+    </script>
+  </body>
+</html>

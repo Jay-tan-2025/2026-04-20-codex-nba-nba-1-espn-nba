@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NBA洞察者</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <h1>NBA洞察者</h1>
+        <p>
+          一个轻量的 NBA 实时数据玩具站。首页看今日赛程，球员页看赛季均值和最近 5 场，预测页记录你的判断并和真实比赛结果对比。
+        </p>
+      </section>
+
+      <nav class="nav">
+        <a href="/">今日赛程</a>
+        <a href="/player">球员分析</a>
+        <a href="/predictions">预测验证</a>
+      </nav>
+
+      <section class="grid two">
+        <article class="card">
+          <h2>今日赛程</h2>
+          <p class="muted">每 5 分钟自动刷新一次，数据直接来自 ESPN。</p>
+          <div id="games" class="scoreboard-list"></div>
+        </article>
+
+        <article class="card">
+          <h2>怎么玩</h2>
+          <p>1. 先在这里看今天有哪些比赛。</p>
+          <p>2. 去球员页输入球员 ESPN id，例如 `4251` 是 Paul George。</p>
+          <p>3. 去预测页记录一条预测，再等比赛结束后点“验证”。</p>
+          <p class="footer-note">
+            这个玩具版故意保持简单，目的是让你先上线、先看到成果。
+          </p>
+        </article>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+    <script>
+      const gamesEl = document.getElementById("games");
+
+      function renderGames(games) {
+        if (!games.length) {
+          gamesEl.innerHTML = '<div class="game">今天暂时没有比赛。</div>';
+          return;
+        }
+
+        gamesEl.innerHTML = games
+          .map(
+            (game) => `
+              <div class="game">
+                <div class="status">${game.shortStatus}</div>
+                <h3>${game.name}</h3>
+                <p class="muted">开赛时间：${nbaInsight.formatLocalTime(game.startTime)}</p>
+                <div class="teams">
+                  <div class="team-row">
+                    <div class="team-name">
+                      <img src="${game.awayTeam.logo}" alt="${game.awayTeam.name}" />
+                      <span>${game.awayTeam.name}</span>
+                    </div>
+                    <div class="team-score">${game.awayTeam.score}</div>
+                  </div>
+                  <div class="team-row">
+                    <div class="team-name">
+                      <img src="${game.homeTeam.logo}" alt="${game.homeTeam.name}" />
+                      <span>${game.homeTeam.name}</span>
+                    </div>
+                    <div class="team-score">${game.homeTeam.score}</div>
+                  </div>
+                </div>
+                <p class="footer-note">比赛 id：${game.id}</p>
+              </div>
+            `
+          )
+          .join("");
+      }
+
+      async function loadGames() {
+        gamesEl.innerHTML = '<div class="game">正在加载今日赛程...</div>';
+        try {
+          const data = await nbaInsight.apiGet("/api/scoreboard");
+          renderGames(data.games || []);
+        } catch (error) {
+          gamesEl.innerHTML = `<div class="game">加载失败：${error.message}</div>`;
+        }
+      }
+
+      loadGames();
+      setInterval(loadGames, 5 * 60 * 1000);
+    </script>
+  </body>
+</html>
