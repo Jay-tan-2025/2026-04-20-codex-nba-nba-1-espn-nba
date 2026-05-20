@@ -10,7 +10,7 @@
     <main class="shell">
       <section class="hero">
         <h1>预测验证页</h1>
-        <p>输入比赛 id、球员 id 和你的预测值。保存到 Supabase 后，就能把预测和真实结果做对比。</p>
+        <p>输入比赛 id、球员 id 和预测值。Supabase 可用时会云端保存；如果数据库暂停，会自动保存到当前浏览器。</p>
       </section>
 
       <nav class="nav">
@@ -23,15 +23,15 @@
         <div class="form-grid">
           <div>
             <label for="eventId">比赛 id</label>
-            <input id="eventId" placeholder="例如 401869191" />
+            <input id="eventId" placeholder="例如 401873198" />
           </div>
           <div>
             <label for="playerId">球员 id</label>
-            <input id="playerId" placeholder="例如 4251" />
+            <input id="playerId" placeholder="例如 5104157" />
           </div>
           <div>
             <label for="playerName">球员名字</label>
-            <input id="playerName" placeholder="例如 Paul George" />
+            <input id="playerName" placeholder="例如 Victor Wembanyama" />
           </div>
           <div>
             <label for="statType">预测项目</label>
@@ -43,12 +43,12 @@
           </div>
           <div>
             <label for="predictedValue">预测值</label>
-            <input id="predictedValue" type="number" placeholder="例如 24" />
+            <input id="predictedValue" type="number" placeholder="例如 28" />
           </div>
         </div>
         <div style="margin-top: 14px">
           <label for="note">备注</label>
-          <textarea id="note" placeholder="可选，例如：我觉得他最近手感很好"></textarea>
+          <textarea id="note" placeholder="可选，例如：今天对位压力大，我猜篮板更高"></textarea>
         </div>
         <div class="form-grid" style="margin-top: 14px">
           <button id="savePrediction">保存预测</button>
@@ -63,6 +63,7 @@
         </article>
         <article class="card">
           <h2>预测记录</h2>
+          <div id="storageStatus" class="ok" style="margin-bottom: 12px">正在检查存储状态...</div>
           <div id="predictionList" class="prediction-list"></div>
         </article>
       </section>
@@ -70,9 +71,55 @@
 
     <script src="/app.js"></script>
     <script>
+      const STORAGE_KEY = "nba-insight-local-predictions";
       const listEl = document.getElementById("predictionList");
       const chartEl = document.getElementById("chart");
+      const statusEl = document.getElementById("storageStatus");
       let currentRows = [];
+      let usingLocalStorage = false;
+
+      function readLocalRows() {
+        try {
+          return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+        } catch (error) {
+          return [];
+        }
+      }
+
+      function writeLocalRows(rows) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(rows));
+      }
+
+      function makeLocalId() {
+        return `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      }
+
+      function getFormPayload() {
+        return {
+          eventId: document.getElementById("eventId").value.trim(),
+          playerId: document.getElementById("playerId").value.trim(),
+          playerName: document.getElementById("playerName").value.trim(),
+          statType: document.getElementById("statType").value,
+          predictedValue: Number(document.getElementById("predictedValue").value),
+          note: document.getElementById("note").value.trim()
+        };
+      }
+
+      function toLocalRow(payload) {
+        return {
+          id: makeLocalId(),
+          player_id: String(payload.playerId),
+          player_name: payload.playerName,
+          event_id: String(payload.eventId),
+          stat_type: payload.statType,
+          predicted_value: Number(payload.predictedValue),
+          actual_value: null,
+          accuracy_score: null,
+          note: payload.note || "",
+          created_at: new Date().toISOString(),
+          source: "local"
+        };
+      }
 
       function fillFormFromItem(item) {
         document.getElementById("eventId").value = item.event_id;
@@ -116,7 +163,8 @@
           .map(
             (item) => `
               <div class="prediction-item">
-                <div class="pill">${item.player_name}</div>
+                <div class="pill">${item.source === "local" ? "本地记录" : "云端记录"}</div>
+                <h3>${item.player_name}</h3>
                 <p>比赛 id：${item.event_id}</p>
                 <p>项目：${item.stat_type}</p>
                 <p>预测值：${item.predicted_value}</p>
@@ -125,7 +173,7 @@
                 <p class="muted">${item.note || "无备注"}</p>
                 <div class="form-grid">
                   <button data-action="verify" data-id="${item.id}">验证这条预测</button>
-                  <button class="secondary" data-action="edit" data-id="${item.id}">把它填回表单</button>
+                  <button class="secondary" data-action="edit" data-id="${item.id}">填回表单</button>
                 </div>
               </div>
             `
@@ -142,11 +190,18 @@
               return;
             }
 
-            window.editPrediction(item);
+            fillFormFromItem(item);
           });
         });
 
         renderChart(rows);
+      }
+
+      function showLocalMode(message) {
+        usingLocalStorage = true;
+        statusEl.className = "warning";
+        statusEl.textContent = `${message} 当前会保存到这个浏览器，不会上传云端。`;
+        renderList(readLocalRows());
       }
 
       async function loadPredictions() {
@@ -156,32 +211,48 @@
           const data = await nbaInsight.apiGet("/api/predictions");
 
           if (data.offline) {
-            listEl.innerHTML = `<div class='prediction-item'>${data.message}</div>`;
-            chartEl.innerHTML = "<div>请先配置 Supabase。</div>";
+            showLocalMode(data.message || "云端存储暂不可用。");
             return;
           }
 
+          usingLocalStorage = false;
+          statusEl.className = "ok";
+          statusEl.textContent = "Supabase 正常，预测会保存到云端。";
           renderList(data.rows || []);
         } catch (error) {
-          listEl.innerHTML = `<div class='prediction-item'>加载失败：${error.message}</div>`;
+          showLocalMode(`云端连接失败：${error.message}`);
         }
       }
 
       async function savePrediction() {
-        try {
-          await nbaInsight.apiSend("/api/predictions", "POST", {
-            eventId: document.getElementById("eventId").value.trim(),
-            playerId: document.getElementById("playerId").value.trim(),
-            playerName: document.getElementById("playerName").value.trim(),
-            statType: document.getElementById("statType").value,
-            predictedValue: document.getElementById("predictedValue").value,
-            note: document.getElementById("note").value.trim()
-          });
+        const payload = getFormPayload();
 
-          alert("保存成功。");
-          loadPredictions();
+        if (!payload.eventId || !payload.playerId || !payload.playerName || !payload.predictedValue) {
+          alert("请先填完整：比赛 id、球员 id、球员名字和预测值。");
+          return;
+        }
+
+        try {
+          if (!usingLocalStorage) {
+            const result = await nbaInsight.apiSend("/api/predictions", "POST", payload);
+            if (!result.offline) {
+              alert("保存成功，已经进入云端记录。");
+              loadPredictions();
+              return;
+            }
+          }
+
+          const rows = readLocalRows();
+          rows.unshift(toLocalRow(payload));
+          writeLocalRows(rows);
+          alert("保存成功，已保存到当前浏览器。");
+          showLocalMode("云端存储暂不可用。");
         } catch (error) {
-          alert(`保存失败：${error.message}`);
+          const rows = readLocalRows();
+          rows.unshift(toLocalRow(payload));
+          writeLocalRows(rows);
+          alert("云端保存失败，已改为保存到当前浏览器。");
+          showLocalMode(`云端保存失败：${error.message}`);
         }
       }
 
@@ -197,17 +268,25 @@
             note: item.note
           });
 
-          alert(
-            `验证完成。实际值：${result.actual.stats[item.stat_type]}，准确率：${result.accuracyScore}`
-          );
-          loadPredictions();
-        } catch (error) {
-          alert(`验证失败：${error.message}`);
-        }
-      };
+          const updatedItem = {
+            ...item,
+            actual_value: result.actual.stats[item.stat_type],
+            accuracy_score: result.accuracyScore,
+            verified_at: new Date().toISOString()
+          };
 
-      window.editPrediction = function editPrediction(item) {
-        fillFormFromItem(item);
+          if (item.source === "local" || usingLocalStorage) {
+            const rows = readLocalRows().map((row) => (row.id === item.id ? updatedItem : row));
+            writeLocalRows(rows);
+            renderList(rows);
+          } else {
+            loadPredictions();
+          }
+
+          alert(`验证完成。实际值：${updatedItem.actual_value}，准确率：${result.accuracyScore}`);
+        } catch (error) {
+          alert(`验证失败：${error.message}。比赛可能还没结束，或 ESPN 暂时没有这场球员数据。`);
+        }
       };
 
       document.getElementById("savePrediction").addEventListener("click", savePrediction);
