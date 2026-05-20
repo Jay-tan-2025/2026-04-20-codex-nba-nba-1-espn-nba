@@ -12,57 +12,95 @@ function calculateAccuracy(prediction, actual) {
   return Math.round(rawScore);
 }
 
+function parseBody(req) {
+  return typeof req.body === "string" ? JSON.parse(req.body) : req.body || {};
+}
+
 module.exports = async function handler(req, res) {
   try {
-    if (!hasSupabaseConfig()) {
-      return res.status(200).json({
-        offline: true,
-        message: "你还没配置 Supabase，所以这里只能演示接口结构。"
-      });
-    }
-
     if (req.method === "GET") {
-      const rows = await listPredictions();
-      return res.status(200).json({ rows });
+      if (!hasSupabaseConfig()) {
+        return res.status(200).json({
+          offline: true,
+          rows: [],
+          message: "Storage is not configured. The prediction page can still be viewed."
+        });
+      }
+
+      try {
+        const rows = await listPredictions();
+        return res.status(200).json({ rows });
+      } catch (error) {
+        return res.status(200).json({
+          offline: true,
+          rows: [],
+          message: "Storage is paused or unavailable. Reopen Supabase to save predictions."
+        });
+      }
     }
 
     if (req.method === "POST") {
-      const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-      const saved = await insertPrediction({
-        player_id: String(body.playerId),
-        player_name: body.playerName,
-        event_id: String(body.eventId),
-        stat_type: body.statType,
-        predicted_value: Number(body.predictedValue),
-        note: body.note || ""
-      });
+      if (!hasSupabaseConfig()) {
+        return res.status(200).json({
+          offline: true,
+          saved: [],
+          message: "Storage is not configured, so this prediction was not saved."
+        });
+      }
 
-      return res.status(200).json({ saved });
+      try {
+        const body = parseBody(req);
+        const saved = await insertPrediction({
+          player_id: String(body.playerId),
+          player_name: body.playerName,
+          event_id: String(body.eventId),
+          stat_type: body.statType,
+          predicted_value: Number(body.predictedValue),
+          note: body.note || ""
+        });
+
+        return res.status(200).json({ saved });
+      } catch (error) {
+        return res.status(200).json({
+          offline: true,
+          saved: [],
+          message: "Storage is paused or unavailable, so this prediction was not saved."
+        });
+      }
     }
 
     if (req.method === "PATCH") {
-      const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+      const body = parseBody(req);
       const actual = await getGamePlayerStat(body.eventId, body.playerId);
 
       if (!actual) {
-        return res.status(404).json({ error: "这场比赛里没有找到这个球员的数据。" });
+        return res.status(404).json({
+          error: "No player box-score row was found for this event."
+        });
       }
 
       const actualValue = Number(actual.stats[body.statType] || 0);
       const accuracyScore = calculateAccuracy(Number(body.predictedValue), actualValue);
+      let updated = [];
 
-      const updated = await upsertVerifiedPrediction({
-        id: body.id,
-        player_id: String(body.playerId),
-        player_name: body.playerName,
-        event_id: String(body.eventId),
-        stat_type: body.statType,
-        predicted_value: Number(body.predictedValue),
-        actual_value: actualValue,
-        accuracy_score: accuracyScore,
-        verified_at: new Date().toISOString(),
-        note: body.note || ""
-      });
+      if (hasSupabaseConfig() && body.id) {
+        try {
+          updated = await upsertVerifiedPrediction({
+            id: body.id,
+            player_id: String(body.playerId),
+            player_name: body.playerName,
+            event_id: String(body.eventId),
+            stat_type: body.statType,
+            predicted_value: Number(body.predictedValue),
+            actual_value: actualValue,
+            accuracy_score: accuracyScore,
+            verified_at: new Date().toISOString(),
+            note: body.note || ""
+          });
+        } catch (error) {
+          updated = [];
+        }
+      }
 
       return res.status(200).json({
         actual,
@@ -71,7 +109,7 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    return res.status(405).json({ error: "不支持的请求方法。" });
+    return res.status(405).json({ error: "Method not allowed." });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }

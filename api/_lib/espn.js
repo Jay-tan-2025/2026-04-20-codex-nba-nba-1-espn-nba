@@ -91,13 +91,20 @@ function extractPlayerRow(summary, playerId) {
 }
 
 function buildRecentGames(gameLog) {
-  const names = gameLog.names || [];
+  const totalsBucket =
+    (gameLog.statistics || []).find((item) => item.displayName === "totals") ||
+    gameLog.statistics?.[0] ||
+    { names: [], events: [] };
+  const names = totalsBucket.names || [];
+  const statsByEventId = new Map(
+    (totalsBucket.events || []).map((item) => [String(item.eventId), item.stats || []])
+  );
   const eventIds = Object.keys(gameLog.events || {});
 
   const rows = eventIds
     .map((eventId) => {
       const event = gameLog.events[eventId];
-      const stats = event.stats || [];
+      const stats = statsByEventId.get(String(eventId)) || [];
       const mapped = {};
 
       names.forEach((name, index) => {
@@ -183,13 +190,10 @@ function buildBiasWarning(seasonStats, recentGames) {
 }
 
 async function getPlayerDetails(playerId) {
-  const [overview, gameLog] = await Promise.all([
-    fetchJson(`${ESPN_ATHLETE_URL}/${playerId}/overview`),
-    fetchJson(`${ESPN_ATHLETE_URL}/${playerId}/gamelog`)
-  ]);
+  const overview = await fetchJson(`${ESPN_ATHLETE_URL}/${playerId}/overview`);
 
   const seasonStats = buildSeasonStats(overview.statistics || {});
-  const recentGames = buildRecentGames(gameLog);
+  const recentGames = buildRecentGames(overview.gameLog || {});
 
   return {
     generatedAt: new Date().toISOString(),
