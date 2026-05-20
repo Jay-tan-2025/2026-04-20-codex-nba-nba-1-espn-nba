@@ -16,6 +16,7 @@
       <nav class="nav">
         <a href="/">今日赛程</a>
         <a href="/player">球员分析</a>
+        <a href="/players">球员 ID</a>
         <a href="/predictions">预测验证</a>
       </nav>
 
@@ -150,6 +151,12 @@
       }
 
       document.getElementById("loadPlayer").addEventListener("click", loadPlayer);
+
+      const initialPlayerId = new URLSearchParams(window.location.search).get("id");
+      if (initialPlayerId) {
+        document.getElementById("playerId").value = initialPlayerId;
+        loadPlayer();
+      }
     </script>
   </body>
 </html>

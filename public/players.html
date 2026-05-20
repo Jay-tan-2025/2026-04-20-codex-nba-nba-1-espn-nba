@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>球员 ID | NBA洞察者</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <h1>球员 ID 速查</h1>
+        <p>常用 ESPN 球员 id 放在这里。点“查看分析”会直接跳到球员页，点“复制 ID”可以拿去预测页填写。</p>
+      </section>
+
+      <nav class="nav">
+        <a href="/">今日赛程</a>
+        <a href="/player">球员分析</a>
+        <a href="/players">球员 ID</a>
+        <a href="/predictions">预测验证</a>
+      </nav>
+
+      <section class="card">
+        <label for="playerSearch">搜索球员</label>
+        <input id="playerSearch" placeholder="输入中文、英文或 id，例如 文班 / Harden / 5104157" />
+      </section>
+
+      <section id="directory" class="grid" style="margin-top: 18px"></section>
+    </main>
+
+    <script>
+      const groups = [
+        {
+          title: "顶级常用",
+          players: [
+            ["LeBron James", "詹姆斯", "1966"],
+            ["Kevin Durant", "杜兰特", "3202"],
+            ["Stephen Curry", "库里", "3975"],
+            ["Kawhi Leonard", "伦纳德", "6450"],
+            ["Nikola Jokic", "约基奇", "3112335"],
+            ["Giannis Antetokounmpo", "字母哥", "3032977"],
+            ["Luka Doncic", "东契奇", "3945274"],
+            ["Joel Embiid", "恩比德", "3059318"]
+          ]
+        },
+        {
+          title: "老牌与次一级球星",
+          players: [
+            ["James Harden", "哈登", "3992"],
+            ["Kyrie Irving", "欧文", "6442"],
+            ["Damian Lillard", "利拉德", "6606"],
+            ["Russell Westbrook", "威少", "3468"],
+            ["Jimmy Butler", "巴特勒", "6430"],
+            ["Paul George", "保罗乔治", "4251"],
+            ["Anthony Davis", "浓眉", "6583"],
+            ["Devin Booker", "布克", "3136193"],
+            ["Donovan Mitchell", "米切尔", "3908809"],
+            ["Jayson Tatum", "塔图姆", "4065648"],
+            ["Jaylen Brown", "杰伦布朗", "3917376"],
+            ["Jalen Brunson", "布伦森", "3934672"]
+          ]
+        },
+        {
+          title: "新星与当红核心",
+          players: [
+            ["Shai Gilgeous-Alexander", "SGA", "4278073"],
+            ["Victor Wembanyama", "文班亚马", "5104157"],
+            ["Anthony Edwards", "爱德华兹", "4594268"],
+            ["Tyrese Haliburton", "哈利伯顿", "4396993"],
+            ["Ja Morant", "莫兰特", "4279888"],
+            ["Zion Williamson", "锡安", "4395628"],
+            ["Paolo Banchero", "班凯罗", "4432573"],
+            ["Chet Holmgren", "切特", "4433255"],
+            ["Cade Cunningham", "坎宁安", "4432166"],
+            ["Scottie Barnes", "斯科蒂巴恩斯", "4433134"],
+            ["Tyrese Maxey", "马克西", "4431678"],
+            ["Jalen Williams", "杰伦威廉姆斯", "4593803"],
+            ["Alperen Sengun", "申京", "4871144"],
+            ["LaMelo Ball", "三球", "4432816"],
+            ["Evan Mobley", "莫布里", "4432158"]
+          ]
+        }
+      ];
+
+      const directoryEl = document.getElementById("directory");
+      const searchEl = document.getElementById("playerSearch");
+
+      function matches(player, keyword) {
+        if (!keyword) return true;
+        return player.join(" ").toLowerCase().includes(keyword.toLowerCase());
+      }
+
+      function renderDirectory() {
+        const keyword = searchEl.value.trim();
+
+        directoryEl.innerHTML = groups
+          .map((group) => {
+            const players = group.players.filter((player) => matches(player, keyword));
+            if (!players.length) return "";
+
+            return `
+              <article class="card">
+                <h2>${group.title}</h2>
+                <div class="prediction-list">
+                  ${players
+                    .map(
+                      ([name, cnName, id]) => `
+                        <div class="prediction-item">
+                          <div class="pill">${id}</div>
+                          <h3>${name}</h3>
+                          <p class="muted">${cnName}</p>
+                          <div class="form-grid">
+                            <button data-action="open" data-id="${id}">查看分析</button>
+                            <button class="secondary" data-action="copy" data-id="${id}">复制 ID</button>
+                          </div>
+                        </div>
+                      `
+                    )
+                    .join("")}
+                </div>
+              </article>
+            `;
+          })
+          .join("");
+
+        directoryEl.querySelectorAll("button[data-action]").forEach((button) => {
+          button.addEventListener("click", async () => {
+            const id = button.dataset.id;
+
+            if (button.dataset.action === "open") {
+              window.location.href = `/player?id=${encodeURIComponent(id)}`;
+              return;
+            }
+
+            await navigator.clipboard.writeText(id);
+            button.textContent = "已复制";
+            setTimeout(() => {
+              button.textContent = "复制 ID";
+            }, 1200);
+          });
+        });
+      }
+
+      searchEl.addEventListener("input", renderDirectory);
+      renderDirectory();
+    </script>
+  </body>
+</html>
